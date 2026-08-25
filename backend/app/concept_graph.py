@@ -33,7 +33,7 @@ CONCEPTS: list[Concept] = [
         order=1,
         description="The instantaneous slope of a function at a point.",
         ground_truth=(
-            "A derivative is the slope of a curve at a single point... the "
+            "A derivative is the slope of a curve at a single point — the "
             "instantaneous rate of change of a function's output with respect "
             "to its input. It describes direction and steepness, not magnitude "
             "of the input itself."
@@ -48,12 +48,12 @@ CONCEPTS: list[Concept] = [
         id="gradient",
         name="Gradient",
         order=2,
-        description="The multivariable generalization of the derivative... a vector of partial derivatives pointing in the direction of steepest ascent.",
+        description="The multivariable generalization of the derivative — a vector of partial derivatives pointing in the direction of steepest ascent.",
         ground_truth=(
             "The gradient of a loss function with respect to the weights is a "
             "vector of partial derivatives. It points in the direction of "
             "steepest INCREASE of the loss, and its magnitude reflects how "
-            "sensitive the loss is to each weight... not how large the weights "
+            "sensitive the loss is to each weight — not how large the weights "
             "themselves are, and not how big a step to take."
         ),
         fallback_question=(
@@ -102,7 +102,7 @@ CONCEPTS: list[Concept] = [
 CONCEPTS_BY_ID: dict[str, Concept] = {c.id: c for c in CONCEPTS}
 CONCEPT_ORDER: list[str] = [c.id for c in CONCEPTS]
 
-WEAK_THRESHOLD = 60  
+WEAK_THRESHOLD = 60
 
 
 def prerequisite_of(concept_id: str) -> str | None:

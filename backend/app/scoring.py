@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session as DBSession
 from app.concept_graph import CONCEPTS_BY_ID, WEAK_THRESHOLD, dependents_of
 from app.models import ConceptState, StudySession
 
-MAX_PROBES_PER_CONCEPT = 2
+MIN_PROBES_PER_CONCEPT = 3  # always ask at least this many before conceding early
+MAX_PROBES_PER_CONCEPT = 4  # hard ceiling regardless of answers
 MISCONCEPTION_PENALTY = 25  # cap applied when a concept is explicitly named in a misconception
 
 
@@ -104,6 +105,10 @@ def apply_probe_answer(
 
 
 def ready_for_intervention(session: StudySession, assessment: dict) -> bool:
+    """Always ask at least MIN_PROBES_PER_CONCEPT questions — even a correct
+    early answer doesn't end the loop right away — but never exceed MAX."""
+    if session.probe_count < MIN_PROBES_PER_CONCEPT:
+        return False
     if assessment.get("misconception_resolved"):
         return True
     return session.probe_count >= MAX_PROBES_PER_CONCEPT

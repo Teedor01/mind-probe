@@ -9,6 +9,7 @@ from app.models import Interaction, StudySession
 from app.schemas import (
     DiagnosisOut,
     InterventionOut,
+    LessonOut,
     ProbeAnswerOut,
     ProbeAnswerRequest,
     ProbeQuestionOut,
@@ -38,6 +39,28 @@ def create_session(db: DBSession = Depends(get_db)):
     return build_diagnosis(db, session)
 
 
+@router.post("/{session_id}/lesson", response_model=LessonOut)
+def lesson(session_id: str, db: DBSession = Depends(get_db)):
+    session = _get_session(db, session_id)
+
+    lesson_text = llm.generate_lesson()
+
+    db.add(
+        Interaction(
+            session_id=session.id,
+            phase="lesson",
+            student_response="",
+            llm_assessment={},
+            prompt=lesson_text,
+        )
+    )
+    session.phase = "lesson"
+    db.add(session)
+    db.commit()
+
+    return LessonOut(session_id=session.id, lesson_text=lesson_text)
+
+
 @router.post("/{session_id}/teach", response_model=DiagnosisOut)
 def teach(session_id: str, body: TeachRequest, db: DBSession = Depends(get_db)):
     session = _get_session(db, session_id)
@@ -57,7 +80,7 @@ def teach(session_id: str, body: TeachRequest, db: DBSession = Depends(get_db)):
     root_cause_id = scoring.select_root_cause(db, session.id)
     session.target_concept_id = root_cause_id
     session.misconception_summary = _summarize_misconception(assessment, root_cause_id)
-    session.phase = "diagnosis"
+    session.phase = "probing"
     db.add(session)
     db.commit()
     db.refresh(session)

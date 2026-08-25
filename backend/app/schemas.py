@@ -1,7 +1,6 @@
 from pydantic import BaseModel, Field
 
 
-# ---------- Structured LLM outputs (forced via tool-use JSON schema) ----------
 
 
 class ConceptConfidence(BaseModel):
@@ -32,7 +31,11 @@ class AnswerAssessment(BaseModel):
     evidence_quote: str
 
 
-# ---------- API request bodies ----------
+
+
+class LessonOut(BaseModel):
+    session_id: str
+    lesson_text: str
 
 
 class TeachRequest(BaseModel):
@@ -48,7 +51,6 @@ class RetestAnswerRequest(BaseModel):
     answer: str = Field(min_length=1)
 
 
-# ---------- API responses ----------
 
 
 class ConceptScoreOut(BaseModel):
