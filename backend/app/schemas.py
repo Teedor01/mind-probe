@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
 
-
+# ---------- Structured LLM outputs (forced via tool-use JSON schema) ----------
 
 
 class ConceptConfidence(BaseModel):
@@ -11,7 +11,7 @@ class ConceptConfidence(BaseModel):
 
 
 class ExplanationAssessment(BaseModel):
-   
+    """What the LLM returns after reading the student's free-form explanation."""
 
     claims: list[str]
     correct_reasoning: list[str]
@@ -23,7 +23,7 @@ class ExplanationAssessment(BaseModel):
 
 
 class AnswerAssessment(BaseModel):
-    
+    """What the LLM returns after reading a student's answer to one diagnostic question."""
 
     correct: bool
     confidence: int = Field(ge=0, le=100)
@@ -32,6 +32,7 @@ class AnswerAssessment(BaseModel):
     evidence_quote: str
 
 
+# ---------- API request bodies ----------
 
 
 class TeachRequest(BaseModel):
@@ -47,7 +48,7 @@ class RetestAnswerRequest(BaseModel):
     answer: str = Field(min_length=1)
 
 
-
+# ---------- API responses ----------
 
 
 class ConceptScoreOut(BaseModel):

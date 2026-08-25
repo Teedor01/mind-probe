@@ -7,9 +7,7 @@ class Concept:
     name: str
     order: int
     description: str
-
     ground_truth: str
-
     fallback_question: str
 
 
@@ -50,7 +48,7 @@ CONCEPTS: list[Concept] = [
         id="gradient",
         name="Gradient",
         order=2,
-        description="The multivariable generalization of the derivative — a vector of partial derivatives pointing in the direction of steepest ascent.",
+        description="The multivariable generalization of the derivative... a vector of partial derivatives pointing in the direction of steepest ascent.",
         ground_truth=(
             "The gradient of a loss function with respect to the weights is a "
             "vector of partial derivatives. It points in the direction of "

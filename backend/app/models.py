@@ -47,7 +47,7 @@ class ConceptState(Base):
     concept_id: Mapped[str] = mapped_column(String)  # matches concept_graph.py ids
     baseline_score: Mapped[float] = mapped_column(Float, default=0.0)
     current_score: Mapped[float] = mapped_column(Float, default=0.0)
-
+    # unprobed | weak | probing | resolved | strong
     status: Mapped[str] = mapped_column(String, default="unprobed")
     evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
