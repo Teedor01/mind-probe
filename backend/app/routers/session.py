@@ -43,6 +43,16 @@ def create_session(db: DBSession = Depends(get_db)):
 def lesson(session_id: str, db: DBSession = Depends(get_db)):
     session = _get_session(db, session_id)
 
+   
+    existing = (
+        db.query(Interaction)
+        .filter(Interaction.session_id == session.id, Interaction.phase == "lesson")
+        .order_by(Interaction.created_at.desc())
+        .first()
+    )
+    if existing and existing.prompt:
+        return LessonOut(session_id=session.id, lesson_text=existing.prompt)
+
     lesson_text = llm.generate_lesson()
 
     db.add(

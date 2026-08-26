@@ -1,6 +1,3 @@
-"""Exercises the deterministic scoring/diagnosis loop with mocked LLM
-assessments (no network, no API key needed). Run: python test_offline.py
-"""
 import os
 
 os.environ["DATABASE_URL"] = "sqlite:///./test_offline.db"
@@ -14,7 +11,6 @@ Base.metadata.drop_all(bind=engine)
 init_db()
 db = SessionLocal()
 
-# 1. create session + init concept states
 session = StudySession(topic="gradient_descent", phase="teach")
 db.add(session)
 db.commit()
@@ -22,9 +18,6 @@ db.refresh(session)
 scoring.init_concept_states(db, session)
 print("Created session:", session.id)
 
-# 2. mock "teach" assessment matching the example in the spec:
-# "Gradient tells us how much we should change the weights" -> confuses
-# gradient with learning_rate
 mock_teach_assessment = {
     "claims": ["Gradient tells us how much we should change the weights"],
     "correct_reasoning": ["Understands gradient relates to weight updates"],
@@ -60,15 +53,10 @@ for c in diagnosis["concept_scores"]:
 print("Root cause / target:", diagnosis["target_concept_name"], f"({root_cause})")
 print("Misconception:", diagnosis["misconception_summary"])
 
-# Both "gradient" and "learning_rate" get capped by the misconception penalty
-# (the sentence names both), so the chain-walk correctly flags "gradient" as
-# the EARLIER broken concept — that's the intended "first broken prerequisite"
-# behavior, not a bug.
+
 assert root_cause == "gradient", f"expected gradient, got {root_cause}"
 
-# 3. mock probe answers -> even a correct/resolved answer on probe #1 should
-# NOT be ready yet (MIN_PROBES_PER_CONCEPT = 3). Simulate probes 1-3, all
-# correct, and confirm it only becomes ready once the minimum is hit.
+
 mock_probe_assessment = {
     "correct": True,
     "confidence": 90,
@@ -92,7 +80,7 @@ ready_after_3 = scoring.ready_for_intervention(session, mock_probe_assessment)
 print("Ready for intervention after 3 probes, resolved=True (should be True):", ready_after_3)
 assert ready_after_3 is True
 
-# Also confirm the hard ceiling: even if never resolved, 4 probes forces it.
+
 session.probe_count = 0
 unresolved_assessment = {**mock_probe_assessment, "misconception_resolved": False}
 for i in range(4):
@@ -101,7 +89,7 @@ ready_at_ceiling = scoring.ready_for_intervention(session, unresolved_assessment
 print("Ready for intervention at 4 probes, still unresolved (should be True, hard ceiling):", ready_at_ceiling)
 assert ready_at_ceiling is True
 
-# 4. mock retest -> correct, misconception resolved -> check downstream lift
+
 mock_retest_assessment = {
     "correct": True,
     "confidence": 92,

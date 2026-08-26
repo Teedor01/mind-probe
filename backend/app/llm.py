@@ -1,25 +1,25 @@
-import json
 import os
 
-import anthropic
+from openai import OpenAI
 
 from app.concept_graph import CONCEPTS, Concept
 
-MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
+MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+BASE_URL = "https://api.groq.com/openai/v1"
 
-_client: anthropic.Anthropic | None = None
+_client: OpenAI | None = None
 
 
-def _get_client() -> anthropic.Anthropic:
+def _get_client() -> OpenAI:
     global _client
     if _client is None:
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
             raise RuntimeError(
-                "ANTHROPIC_API_KEY is not set. Add it to backend/.env before "
+                "GROQ_API_KEY is not set. Add it to backend/.env before "
                 "running any teach/probe/retest endpoint."
             )
-        _client = anthropic.Anthropic(api_key=api_key)
+        _client = OpenAI(api_key=api_key, base_url=BASE_URL, timeout=30.0, max_retries=2)
     return _client
 
 
@@ -32,25 +32,46 @@ def _concept_chain_text() -> str:
 
 def _force_tool_call(tool_name: str, tool_schema: dict, system: str, user_message: str) -> dict:
     client = _get_client()
-    response = client.messages.create(
+    response = client.chat.completions.create(
         model=MODEL,
         max_tokens=1500,
-        system=system,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_message},
+        ],
         tools=[
             {
-                "name": tool_name,
-                "description": f"Record the {tool_name} result as structured data.",
-                "input_schema": tool_schema,
+                "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "description": f"Record the {tool_name} result as structured data.",
+                    "parameters": tool_schema,
+                },
             }
         ],
-        tool_choice={"type": "tool", "name": tool_name},
-        messages=[{"role": "user", "content": user_message}],
+        tool_choice={"type": "function", "function": {"name": tool_name}},
     )
-    for block in response.content:
-        if block.type == "tool_use" and block.name == tool_name:
-            return block.input
+    message = response.choices[0].message
+    if message.tool_calls:
+        for call in message.tool_calls:
+            if call.function.name == tool_name:
+                import json
+
+                return json.loads(call.function.arguments)
     raise RuntimeError(f"Model did not return the expected tool call ({tool_name}).")
 
+
+def _plain_text(system: str, user_message: str, max_tokens: int) -> str:
+    client = _get_client()
+    response = client.chat.completions.create(
+        model=MODEL,
+        max_tokens=max_tokens,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_message},
+        ],
+    )
+    return (response.choices[0].message.content or "").strip()
 
 
 EXPLANATION_ASSESSMENT_SCHEMA = {
@@ -67,7 +88,7 @@ EXPLANATION_ASSESSMENT_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "concept_id": {"type": "string", "enum": [c.id for c in CONCEPTS]},
-                    "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 100},
                     "reasoning": {"type": "string"},
                 },
                 "required": ["concept_id", "confidence", "reasoning"],
@@ -100,13 +121,35 @@ def assess_explanation(explanation: str) -> dict:
         "concepts (e.g. gradient vs learning rate), call that out explicitly in "
         "misconceptions with both concept ids named."
     )
-    return _force_tool_call(
+    result = _force_tool_call(
         "record_explanation_assessment",
         EXPLANATION_ASSESSMENT_SCHEMA,
         system,
         f"Student's explanation of gradient descent:\n\n\"{explanation}\"",
     )
+    for entry in result.get("concept_confidences", []):
+        entry["confidence"] = _normalize_confidence(entry.get("confidence", 0))
+    return result
 
+
+def generate_lesson() -> str:
+    system = (
+        "You are MindProbe's lesson-writer. Write ONE tight passage, 150-220 words, "
+        "that teaches the full prerequisite chain below in order, showing precisely "
+        "how each concept builds on the previous one. Plain language, no headers, no "
+        "bullet points, no greeting. This is the ONLY teaching the student receives "
+        "before they explain gradient descent themselves, so it must actually convey "
+        "the ground truth for each concept, not just name them."
+    )
+    user_message = (
+        "Concept chain to teach, in order:\n"
+        f"{_concept_chain_text()}\n\n"
+        "Write the lesson passage now."
+    )
+    text = _plain_text(system, user_message, max_tokens=400)
+    if not text:
+        raise RuntimeError("Groq returned an empty lesson — retry.")
+    return text
 
 
 def generate_probe_question(concept: Concept, evidence: str, probe_number: int) -> str:
@@ -124,23 +167,30 @@ def generate_probe_question(concept: Concept, evidence: str, probe_number: int) 
         "Ask one question that would expose whether they hold the misconception "
         "or genuinely understand this concept."
     )
-    client = _get_client()
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=200,
-        system=system,
-        messages=[{"role": "user", "content": user_message}],
-    )
-    text = "".join(b.text for b in response.content if b.type == "text").strip()
+    text = _plain_text(system, user_message, max_tokens=200)
     return text or concept.fallback_question
 
+
+def _normalize_confidence(value) -> int:
+    """Groq's structured output sometimes emits confidence as a 0-1 fraction
+    instead of the requested 0-100 integer, and its schema validator rejects
+    the tool call outright if the type doesn't match exactly. Rather than
+    fight the model into perfect compliance, accept either shape here and
+    normalize to a clean 0-100 int for the rest of the app."""
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return 0
+    if 0 <= value <= 1:
+        value *= 100
+    return max(0, min(100, round(value)))
 
 
 ANSWER_ASSESSMENT_SCHEMA = {
     "type": "object",
     "properties": {
         "correct": {"type": "boolean"},
-        "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 100},
         "misconception_resolved": {"type": "boolean"},
         "reasoning": {"type": "string"},
         "evidence_quote": {"type": "string"},
@@ -164,9 +214,9 @@ def assess_answer(concept: Concept, question: str, answer: str, known_misconcept
         f"Student's answer: \"{answer}\"\n\n"
         "Assess this answer."
     )
-    return _force_tool_call("record_answer_assessment", ANSWER_ASSESSMENT_SCHEMA, system, user_message)
-
-
+    result = _force_tool_call("record_answer_assessment", ANSWER_ASSESSMENT_SCHEMA, system, user_message)
+    result["confidence"] = _normalize_confidence(result.get("confidence", 0))
+    return result
 
 
 def generate_intervention(concept: Concept, misconception: str) -> str:
@@ -182,16 +232,7 @@ def generate_intervention(concept: Concept, misconception: str) -> str:
         f"Student's misconception: {misconception}\n\n"
         "Write the minimal correction."
     )
-    client = _get_client()
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=250,
-        system=system,
-        messages=[{"role": "user", "content": user_message}],
-    )
-    text = "".join(b.text for b in response.content if b.type == "text").strip()
-    return text
-
+    return _plain_text(system, user_message, max_tokens=250)
 
 
 def generate_retest_question(concept: Concept, misconception: str) -> str:
@@ -206,12 +247,5 @@ def generate_retest_question(concept: Concept, misconception: str) -> str:
         f"Ground truth: {concept.ground_truth}\n"
         f"Misconception that was just corrected: {misconception}\n"
     )
-    client = _get_client()
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=200,
-        system=system,
-        messages=[{"role": "user", "content": user_message}],
-    )
-    text = "".join(b.text for b in response.content if b.type == "text").strip()
+    text = _plain_text(system, user_message, max_tokens=200)
     return text or concept.fallback_question
