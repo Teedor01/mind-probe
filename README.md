@@ -135,17 +135,6 @@ misconception map at any point in a session) but isn't linked from the
 normal flow anymore... useful if you want to eyeball what the model inferred
 without running the whole loop.
 
-## Demo script (2 min)
-
-1. Skim the Learn lesson.
-2. Type a flawed explanation, e.g.: *"Gradient tells us how much we should
-   change the weights."*
-3. Answer the 3-4 Socratic probes (nothing revealed yet... this is the part
-   that makes it feel like an oral exam, not a quiz).
-4. Read the minimal intervention.
-5. Answer the retest question correctly.
-6. First reveal: misconception named, before/after map... root concept and
-   its dependents both jump — "Misconception resolved."
 
 ## Design
 
@@ -164,9 +153,3 @@ start screen is a two-column layout: session pitch, chain preview, and
 CTA on the left; a "what to expect" walkthrough of the four-step loop on
 the right, with a supporting feature row underneath.
 
-## What's deliberately not built
-
-- No generic knowledge-graph engine (5 hardcoded nodes is enough for one subject)
-- No multi-subject support
-- No user accounts / auth (session-id in the URL is enough for a demo)
-- No spaced repetition or longitudinal tracking (that's a different product)
