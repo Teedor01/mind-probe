@@ -31,34 +31,50 @@ def _concept_chain_text() -> str:
 
 
 def _force_tool_call(tool_name: str, tool_schema: dict, system: str, user_message: str) -> dict:
-    client = _get_client()
-    response = client.chat.completions.create(
-        model=MODEL,
-        max_tokens=1500,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_message},
-        ],
-        tools=[
-            {
-                "type": "function",
-                "function": {
-                    "name": tool_name,
-                    "description": f"Record the {tool_name} result as structured data.",
-                    "parameters": tool_schema,
-                },
-            }
-        ],
-        tool_choice={"type": "function", "function": {"name": tool_name}},
-    )
-    message = response.choices[0].message
-    if message.tool_calls:
-        for call in message.tool_calls:
-            if call.function.name == tool_name:
-                import json
+    import json
 
-                return json.loads(call.function.arguments)
-    raise RuntimeError(f"Model did not return the expected tool call ({tool_name}).")
+    client = _get_client()
+    last_error: Exception | None = None
+
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL,
+                max_tokens=3000,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_message},
+                ],
+                tools=[
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": tool_name,
+                            "description": f"Record the {tool_name} result as structured data.",
+                            "parameters": tool_schema,
+                        },
+                    }
+                ],
+                tool_choice={"type": "function", "function": {"name": tool_name}},
+                extra_body={"reasoning_effort": "low"},
+            )
+        except Exception as e:
+            last_error = e
+            continue
+
+        message = response.choices[0].message
+        if message.tool_calls:
+            for call in message.tool_calls:
+                if call.function.name == tool_name:
+                    try:
+                        return json.loads(call.function.arguments)
+                    except json.JSONDecodeError as e:
+                        last_error = e
+                        break
+
+    raise RuntimeError(
+        f"Model did not return a valid {tool_name} tool call after 3 attempts."
+    ) from last_error
 
 
 def _plain_text(system: str, user_message: str, max_tokens: int) -> str:
@@ -70,6 +86,7 @@ def _plain_text(system: str, user_message: str, max_tokens: int) -> str:
             {"role": "system", "content": system},
             {"role": "user", "content": user_message},
         ],
+        extra_body={"reasoning_effort": "low"},
     )
     return (response.choices[0].message.content or "").strip()
 
@@ -119,7 +136,11 @@ def assess_explanation(explanation: str) -> dict:
         "didn't explicitly mention (confidence 0 if entirely absent). Be precise about "
         "which specific claims are correct vs incorrect. If the student conflates two "
         "concepts (e.g. gradient vs learning rate), call that out explicitly in "
-        "misconceptions with both concept ids named."
+        "misconceptions with both concept ids named.\n\n"
+        "Keep every field concise: each per-concept 'reasoning' should be ONE sentence "
+        "(max ~25 words), and 'overall_summary' should be 1-2 sentences. This is a "
+        "structured data record, not an essay — verbosity here only risks truncating "
+        "the response before it's complete."
     )
     result = _force_tool_call(
         "record_explanation_assessment",
@@ -134,7 +155,7 @@ def assess_explanation(explanation: str) -> dict:
 
 def generate_lesson() -> str:
     system = (
-        "You are MindProbe's lesson-writer. Write ONE tight passage, 150-220 words, "
+        "You are MindProbe's lesson-writer. Write ONE tight passage, 400-500 words, "
         "that teaches the full prerequisite chain below in order, showing precisely "
         "how each concept builds on the previous one. Plain language, no headers, no "
         "bullet points, no greeting. This is the ONLY teaching the student receives "
@@ -146,10 +167,11 @@ def generate_lesson() -> str:
         f"{_concept_chain_text()}\n\n"
         "Write the lesson passage now."
     )
-    text = _plain_text(system, user_message, max_tokens=400)
-    if not text:
-        raise RuntimeError("Groq returned an empty lesson — retry.")
-    return text
+    for attempt in range(3):
+        text = _plain_text(system, user_message, max_tokens=1500)
+        if text:
+            return text
+    raise RuntimeError("Groq returned an empty lesson after 3 attempts — try again.")
 
 
 def generate_probe_question(concept: Concept, evidence: str, probe_number: int) -> str:
@@ -167,7 +189,7 @@ def generate_probe_question(concept: Concept, evidence: str, probe_number: int) 
         "Ask one question that would expose whether they hold the misconception "
         "or genuinely understand this concept."
     )
-    text = _plain_text(system, user_message, max_tokens=200)
+    text = _plain_text(system, user_message, max_tokens=500)
     return text or concept.fallback_question
 
 
@@ -232,7 +254,7 @@ def generate_intervention(concept: Concept, misconception: str) -> str:
         f"Student's misconception: {misconception}\n\n"
         "Write the minimal correction."
     )
-    return _plain_text(system, user_message, max_tokens=250)
+    return _plain_text(system, user_message, max_tokens=600)
 
 
 def generate_retest_question(concept: Concept, misconception: str) -> str:
@@ -247,5 +269,5 @@ def generate_retest_question(concept: Concept, misconception: str) -> str:
         f"Ground truth: {concept.ground_truth}\n"
         f"Misconception that was just corrected: {misconception}\n"
     )
-    text = _plain_text(system, user_message, max_tokens=200)
+    text = _plain_text(system, user_message, max_tokens=500)
     return text or concept.fallback_question

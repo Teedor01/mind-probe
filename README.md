@@ -134,22 +134,3 @@ The `/diagnosis` route still exists as a standalone debug view (raw
 misconception map at any point in a session) but isn't linked from the
 normal flow anymore... useful if you want to eyeball what the model inferred
 without running the whole loop.
-
-
-## Design
-
-Light "purple SaaS" theme, white cards on a soft lavender-grey background
-(`#F6F6FB`), a single purple accent (`#6D5FFB`) for the brand color and
-primary actions, Inter as the only typeface. Tokens live in
-`frontend/tailwind.config.ts`. This is the correct, intended design...
-**an earlier session briefly overwrote it with a dark "diagnostic
-instrument" theme (graphite background, amber accents) by mistake; that
-was reverted and should not be reintroduced.**
-
-The prerequisite chain is shown as a simple pill sequence with arrows
-(`Slope → Derivative → ...`), used consistently on the start screen and
-throughout the flow — there's no separate gauge/dial visualization. The
-start screen is a two-column layout: session pitch, chain preview, and
-CTA on the left; a "what to expect" walkthrough of the four-step loop on
-the right, with a supporting feature row underneath.
-
